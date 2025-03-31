@@ -170,3 +170,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 config.py
+/khumbu_change_dataset/
+/khumbu_glacier_data/
