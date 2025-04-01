@@ -170,5 +170,6 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 config.py
+best_glacier_change_model.pth
 /khumbu_change_dataset/
 /khumbu_glacier_data/
