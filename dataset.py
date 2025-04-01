@@ -980,7 +980,7 @@ def analyze_khumbu_dataset(dataset_dir):
 
 if __name__ == "__main__":
     # Define years range for Khumbu Glacier
-    years = [2018, 2019, 2020, 2021, 2022]
+    years = [2017,2018, 2019, 2020, 2021, 2022,2023]
     
     try:
         use_sentinel_hub = True

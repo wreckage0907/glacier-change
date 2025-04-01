@@ -7,6 +7,10 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix, precision_recall_curve, average_precision_score
+import seaborn as sns
+from matplotlib.colors import ListedColormap
+import matplotlib.patches as mpatches
 import time
 from tqdm import tqdm
 from torch.amp import autocast, GradScaler
@@ -492,7 +496,351 @@ def evaluate_model(model, test_loader, criterion, num_samples=5):
     plt.close()
     
     return test_loss, avg_dice, avg_iou
-
+# Function to visualize model architecture and feature maps
+def visualize_model_components(model, test_loader):
+    """Visualize model architecture and feature activations"""
+    # Get a sample input
+    sample_input, _ = next(iter(test_loader))
+    sample_input = sample_input.to(device)
+    
+    # Create figure for visualizing architecture
+    plt.figure(figsize=(12, 10))
+    plt.title("Attention U-Net Architecture", fontsize=16)
+    
+    # Simplified architecture visualization
+    blocks = ['Input', 'Enc1', 'Enc2', 'Enc3', 'Enc4', 'Bottleneck', 
+              'Dec4+Att4', 'Dec3+Att3', 'Dec2+Att2', 'Dec1+Att1', 'Output']
+    
+    # Create a grid layout
+    grid_height = 3
+    grid_width = 4
+    
+    # Define block positions (x, y, width, height)
+    positions = {
+        'Input': (1, 0, 1, 1),
+        'Enc1': (0, 1, 1, 1),
+        'Enc2': (0, 2, 1, 1),
+        'Enc3': (1, 2, 1, 1),
+        'Enc4': (2, 2, 1, 1),
+        'Bottleneck': (3, 2, 1, 1),
+        'Dec4+Att4': (3, 1, 1, 1),
+        'Dec3+Att3': (2, 1, 1, 1),
+        'Dec2+Att2': (2, 0, 1, 1),
+        'Dec1+Att1': (3, 0, 1, 1),
+        'Output': (2.5, -0.5, 1, 0.5)
+    }
+    
+    # Define colors for different block types
+    colors = {
+        'Input': 'lightblue',
+        'Enc1': 'lightgreen',
+        'Enc2': 'lightgreen',
+        'Enc3': 'lightgreen',
+        'Enc4': 'lightgreen',
+        'Bottleneck': 'gold',
+        'Dec4+Att4': 'lightcoral',
+        'Dec3+Att3': 'lightcoral',
+        'Dec2+Att2': 'lightcoral',
+        'Dec1+Att1': 'lightcoral',
+        'Output': 'violet'
+    }
+    
+    # Draw blocks
+    for block in blocks:
+        x, y, w, h = positions[block]
+        rect = mpatches.Rectangle((x, y), w, h, linewidth=1, edgecolor='black', 
+                                facecolor=colors[block], alpha=0.7)
+        plt.gca().add_patch(rect)
+        plt.text(x + w/2, y + h/2, block, ha='center', va='center', fontsize=10)
+    
+    # Draw connections
+    connections = [
+        ('Input', 'Enc1'), ('Enc1', 'Enc2'), ('Enc2', 'Enc3'), ('Enc3', 'Enc4'), 
+        ('Enc4', 'Bottleneck'), ('Bottleneck', 'Dec4+Att4'), ('Dec4+Att4', 'Dec3+Att3'),
+        ('Dec3+Att3', 'Dec2+Att2'), ('Dec2+Att2', 'Dec1+Att1'), ('Dec1+Att1', 'Output')
+    ]
+    
+    # Skip connections
+    skip_connections = [
+        ('Enc4', 'Dec4+Att4'), ('Enc3', 'Dec3+Att3'), 
+        ('Enc2', 'Dec2+Att2'), ('Enc1', 'Dec1+Att1')
+    ]
+    
+    # Draw regular connections
+    for start, end in connections:
+        start_x, start_y, start_w, start_h = positions[start]
+        end_x, end_y, end_w, end_h = positions[end]
+        plt.arrow(start_x + start_w/2, start_y + start_h/2, 
+                 (end_x + end_w/2) - (start_x + start_w/2), 
+                 (end_y + end_h/2) - (start_y + start_h/2),
+                 head_width=0.05, head_length=0.05, fc='black', ec='black', length_includes_head=True)
+    
+    # Draw skip connections with dashed lines
+    for start, end in skip_connections:
+        start_x, start_y, start_w, start_h = positions[start]
+        end_x, end_y, end_w, end_h = positions[end]
+        plt.plot([start_x + start_w, end_x], 
+                [start_y + start_h/2, end_y + end_h/2], 
+                'r--', linewidth=1)
+    
+    # Set plot limits
+    plt.xlim(-0.5, 4.5)
+    plt.ylim(-1, 3.5)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig('model_architecture.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # Generate and visualize feature maps
+    model.eval()
+    with torch.no_grad():
+        # Forward pass to get feature maps
+        # We'll need to modify the model to return intermediate activations
+        # For this example, we'll just visualize the first layer's output
+        
+        # Get first layer activation
+        first_layer_activation = model.enc1[0](sample_input)
+        first_layer_activation = model.enc1[1](first_layer_activation)
+        first_layer_activation = model.enc1[2](first_layer_activation)
+        
+        # Visualize a subset of feature maps
+        plt.figure(figsize=(15, 10))
+        plt.suptitle("First Layer Feature Maps", fontsize=16)
+        
+        # Get one sample from batch
+        feature_maps = first_layer_activation[0].cpu().numpy()
+        
+        # Display up to 16 feature maps
+        num_feature_maps = min(16, feature_maps.shape[0])
+        for i in range(num_feature_maps):
+            plt.subplot(4, 4, i+1)
+            plt.imshow(feature_maps[i], cmap='viridis')
+            plt.title(f"Filter {i+1}")
+            plt.axis('off')
+        
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9)
+        plt.savefig('feature_maps.png', dpi=300)
+        plt.close()
+# Function to generate detailed evaluation metrics and plots
+def generate_detailed_metrics(model, test_loader, num_samples=5):
+    """Generate detailed metrics and visualizations for model evaluation"""
+    model.eval()
+    all_preds = []
+    all_probs = []
+    all_targets = []
+    
+    with torch.no_grad():
+        for inputs, targets in tqdm(test_loader, desc="Generating metrics"):
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+            
+            with autocast(device_type='cuda'):
+                outputs = model(inputs)
+                probs = torch.sigmoid(outputs)
+                preds = (probs > 0.5).float()
+            
+            all_probs.extend(probs.cpu().numpy().flatten())
+            all_preds.extend(preds.cpu().numpy().flatten())
+            all_targets.extend(targets.cpu().numpy().flatten())
+    
+    # 1. Confusion Matrix
+    cm = confusion_matrix(all_targets, all_preds)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=['No Change', 'Change'],
+                yticklabels=['No Change', 'Change'])
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix for Glacier Change Detection')
+    plt.tight_layout()
+    plt.savefig('confusion_matrix.png', dpi=300)
+    plt.close()
+    
+    # 2. Precision-Recall Curve
+    precision, recall, thresholds = precision_recall_curve(all_targets, all_probs)
+    avg_precision = average_precision_score(all_targets, all_probs)
+    
+    plt.figure(figsize=(8, 6))
+    plt.plot(recall, precision, 'b-', linewidth=2)
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title(f'Precision-Recall Curve (AP = {avg_precision:.3f})')
+    plt.grid(True)
+    plt.savefig('precision_recall_curve.png', dpi=300)
+    plt.close()
+    
+    # 3. Find optimal threshold
+    f1_scores = 2 * precision * recall / (precision + recall + 1e-7)
+    optimal_idx = np.argmax(f1_scores)
+    optimal_threshold = thresholds[optimal_idx]
+    
+    # 4. ROC curves by adjusting thresholds
+    plt.figure(figsize=(10, 6))
+    
+    # Get sample data for visualization
+    sample_inputs, sample_targets = next(iter(test_loader))
+    sample_inputs = sample_inputs.to(device)
+    sample_targets = sample_targets.to(device)
+    
+    with torch.no_grad():
+        sample_outputs = model(sample_inputs)
+        sample_probs = torch.sigmoid(sample_outputs)
+    
+    # Visualize effect of different thresholds
+    thresholds_to_show = [0.3, 0.5, 0.7, optimal_threshold]
+    
+    for i in range(min(num_samples, len(sample_inputs))):
+        for t_idx, threshold in enumerate(thresholds_to_show):
+            plt.subplot(num_samples, len(thresholds_to_show), i*len(thresholds_to_show) + t_idx + 1)
+            
+            # Convert to numpy for visualization
+            prob_map = sample_probs[i, 0].cpu().numpy()
+            target = sample_targets[i, 0].cpu().numpy()
+            
+            # Create overlay
+            # Green: True Positive, Red: False Positive, Blue: False Negative, Transparent: True Negative
+            overlay = np.zeros((prob_map.shape[0], prob_map.shape[1], 4))
+            
+            pred = prob_map > threshold
+            
+            # True Positive (green)
+            tp_mask = np.logical_and(pred, target)
+            overlay[tp_mask, 0] = 0
+            overlay[tp_mask, 1] = 1
+            overlay[tp_mask, 2] = 0
+            overlay[tp_mask, 3] = 1
+            
+            # False Positive (red)
+            fp_mask = np.logical_and(pred, np.logical_not(target))
+            overlay[fp_mask, 0] = 1
+            overlay[fp_mask, 1] = 0
+            overlay[fp_mask, 2] = 0
+            overlay[fp_mask, 3] = 1
+            
+            # False Negative (blue)
+            fn_mask = np.logical_and(np.logical_not(pred), target)
+            overlay[fn_mask, 0] = 0
+            overlay[fn_mask, 1] = 0
+            overlay[fn_mask, 2] = 1
+            overlay[fn_mask, 3] = 1
+            
+            plt.imshow(prob_map, cmap='gray', vmin=0, vmax=1)
+            plt.imshow(overlay, alpha=0.5)
+            
+            if i == 0:
+                plt.title(f'Threshold: {threshold:.2f}')
+            if t_idx == 0:
+                plt.ylabel(f'Sample {i+1}')
+            
+            plt.axis('off')
+    
+    # Add legend
+    patches = [
+        mpatches.Patch(color='green', label='True Positive'),
+        mpatches.Patch(color='red', label='False Positive'),
+        mpatches.Patch(color='blue', label='False Negative')
+    ]
+    plt.figlegend(handles=patches, loc='lower center', ncol=3)
+    
+    plt.suptitle(f'Prediction Results with Different Thresholds (Optimal: {optimal_threshold:.2f})')
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.1)
+    plt.savefig('threshold_comparison.png', dpi=300)
+    plt.close()
+    
+    return {
+        'optimal_threshold': optimal_threshold,
+        'average_precision': avg_precision,
+        'confusion_matrix': cm
+    }
+# Enhanced training curve visualization
+def visualize_training_metrics(train_losses, val_losses):
+    """Create enhanced visualization of training metrics"""
+    
+    # 1. Training and validation loss curves with annotations
+    epochs = list(range(1, len(train_losses) + 1))
+    
+    plt.figure(figsize=(12, 8))
+    
+    # Smoothed curves
+    def smooth(y, box_pts=3):
+        box = np.ones(box_pts)/box_pts
+        y_smooth = np.convolve(y, box, mode='same')
+        return y_smooth
+    
+    # Plot original and smoothed curves
+    plt.plot(epochs, train_losses, 'b-', alpha=0.3, label='Training Loss')
+    plt.plot(epochs, smooth(train_losses), 'b-', linewidth=2, label='Training Loss (Smoothed)')
+    
+    plt.plot(epochs, val_losses, 'r-', alpha=0.3, label='Validation Loss')
+    plt.plot(epochs, smooth(val_losses), 'r-', linewidth=2, label='Validation Loss (Smoothed)')
+    
+    # Mark best validation epoch
+    best_epoch = np.argmin(val_losses) + 1
+    min_val_loss = min(val_losses)
+    plt.axvline(x=best_epoch, color='green', linestyle='--', alpha=0.5,
+               label=f'Best Model (Epoch {best_epoch})')
+    plt.plot(best_epoch, min_val_loss, 'go', markersize=10)
+    
+    # Annotations
+    plt.annotate(f'Best val_loss: {min_val_loss:.4f}',
+                xy=(best_epoch, min_val_loss),
+                xytext=(best_epoch + 2, min_val_loss + 0.05),
+                arrowprops=dict(facecolor='black', shrink=0.05, width=1.5),
+                fontsize=10)
+    
+    # Calculate and annotate overfitting point
+    loss_diff = np.array(val_losses) - np.array(train_losses)
+    # Find where validation loss starts diverging significantly from training loss
+    overfitting_threshold = 0.05  # Consider adjusting based on your loss scale
+    potential_overfit_epochs = [i for i, diff in enumerate(loss_diff) if diff > overfitting_threshold]
+    
+    if potential_overfit_epochs:
+        overfit_start = potential_overfit_epochs[0] + 1  # +1 because epochs are 1-indexed
+        plt.axvline(x=overfit_start, color='orange', linestyle='--', alpha=0.5,
+                  label=f'Potential Overfitting (Epoch {overfit_start})')
+    
+    # Add grid, legend and labels
+    plt.grid(True, alpha=0.3)
+    plt.legend(loc='upper right')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss Curves')
+    
+    # Add epoch markers at bottom
+    plt.xticks(np.arange(1, len(epochs)+1, step=max(1, len(epochs)//10)))
+    
+    plt.tight_layout()
+    plt.savefig('enhanced_training_curve.png', dpi=300)
+    plt.close()
+    
+    # 2. Learning rate analysis (if needed, this would require modifying train_model to store LR)
+    
+    # 3. Create a training summary table image
+    summary_text = [
+        "Training Summary",
+        "===============================",
+        f"Total Epochs: {len(train_losses)}",
+        f"Best Epoch: {best_epoch}",
+        f"Final Training Loss: {train_losses[-1]:.6f}",
+        f"Best Validation Loss: {min_val_loss:.6f}",
+        f"Training Time: N/A (Add timing information to train_model function)",
+        "===============================",
+    ]
+    
+    # Create a text-based summary image
+    plt.figure(figsize=(6, 4))
+    plt.text(0.5, 0.5, '\n'.join(summary_text), 
+             horizontalalignment='center',
+             verticalalignment='center',
+             transform=plt.gca().transAxes,
+             fontsize=11,
+             family='monospace')
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig('training_summary.png', dpi=300)
+    plt.close()
 # Main execution
 if __name__ == "__main__":
     # Dataset parameters
@@ -557,6 +905,18 @@ if __name__ == "__main__":
     
     # Evaluate the model
     test_loss, dice_coef, iou = evaluate_model(trained_model, test_loader, criterion)
+    visualize_training_metrics(train_losses, val_losses)
+    
+    # Visualize model architecture and feature maps
+    visualize_model_components(trained_model, test_loader)
+    
+    # Generate detailed metrics
+    detailed_metrics = generate_detailed_metrics(trained_model, test_loader)
+    
+    print(f"Optimal threshold: {detailed_metrics['optimal_threshold']:.4f}")
+    print(f"Average Precision: {detailed_metrics['average_precision']:.4f}")
+    
+    print("All visualizations saved successfully!")
     
     print("Training and evaluation complete!")
     print(f"Test Loss: {test_loss:.4f}, Dice Coefficient: {dice_coef:.4f}, IoU: {iou:.4f}")
