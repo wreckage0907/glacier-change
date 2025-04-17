@@ -171,5 +171,7 @@ cython_debug/
 .pypirc
 config.py
 best_glacier_change_model.pth
+efficient_model.pth
+inefficient_model.pth
 /khumbu_change_dataset/
 /khumbu_glacier_data/
