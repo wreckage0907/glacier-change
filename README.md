@@ -21,7 +21,7 @@ The implementation uses Sentinel Hub data to track changes in one of the Himalay
 
 3. **Prepare the dataset**:
     ```
-    python3 dataset.py
+    python3 build_dataset.py
     ```
 
 4. **Train the model**:
